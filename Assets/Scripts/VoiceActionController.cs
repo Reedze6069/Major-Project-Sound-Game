@@ -2,10 +2,7 @@ using UnityEngine;
 
 public class VoiceActionController : MonoBehaviour
 {
-    // 1) Add Neutral so the game doesn't start crouching by default
     public enum VoiceState { Neutral, Quiet, Medium, Loud }
-
-    // CurrentState must be settable inside this script
     public VoiceState CurrentState { get; private set; } = VoiceState.Neutral;
 
     [Header("References")]
@@ -13,39 +10,43 @@ public class VoiceActionController : MonoBehaviour
     public PlayerController player;
 
     [Header("Thresholds (tune during testing)")]
-    public float quietMax = 0.18f;
-    public float loudMin = 0.375f;
+    public float quietMax = 0.18f;   // <= quietMax = Quiet
+    public float loudMin = 0.375f;   // >= loudMin = Loud (else Medium)
 
     [Header("Stability")]
     public float hysteresis = 0.02f;
-    public float activationThreshold = 0.05f; // speak once to "activate" the system
+    public float activationThreshold = 0.05f;
+
+    [Header("Neutral Return")]
+    public float neutralReturnThreshold = 0.01f;
+    public float neutralHoldTime = 0.5f;
 
     [Header("Cooldowns")]
     public float jumpCooldown = 0.25f;
     public float shootCooldown = 0.15f;
 
+    [Header("Spacebar Confirm")]
+    public KeyCode confirmKey = KeyCode.Space;
+    public float confirmCooldown = 0.12f; // prevents double confirms from one press
+
+    private float neutralTimer = 0f;
     private float jumpTimer = 0f;
     private float shootTimer = 0f;
+    private float confirmTimer = 0f;
 
     private bool hasActivated = false;
-    public float quietHoldTime = 0.20f;
-    private float quietHoldTimer = 0f;
-    
-    [Header("Neutral Return")]
-    public float neutralReturnThreshold = 0.01f;  // below this = basically silence
-    public float neutralHoldTime = 0.5f;          // must stay silent this long
-    private float neutralTimer = 0f;
-
 
     void Update()
     {
         if (mic == null || player == null) return;
 
+        float a = mic.SmoothedAmplitude;
+
         jumpTimer -= Time.deltaTime;
         shootTimer -= Time.deltaTime;
+        confirmTimer -= Time.deltaTime;
 
-        float a = mic.SmoothedAmplitude;
-// If user goes silent again for a while, return to Neutral (stand idle)
+        // --- Neutral return (silence -> Neutral) ---
         if (a < neutralReturnThreshold)
         {
             neutralTimer += Time.deltaTime;
@@ -61,7 +62,7 @@ public class VoiceActionController : MonoBehaviour
             neutralTimer = 0f;
         }
 
-        // --- Activation gate: start Neutral until user speaks once ---
+        // --- Activation gate ---
         if (!hasActivated)
         {
             CurrentState = VoiceState.Neutral;
@@ -73,50 +74,72 @@ public class VoiceActionController : MonoBehaviour
             return;
         }
 
-        // --- Sticky transitions with hysteresis ---
+        // --- Detect state (with hysteresis) ---
+        VoiceState next = CurrentState;
+
         if (CurrentState == VoiceState.Neutral)
         {
-            // Decide initial state after activation
-            if (a <= quietMax) CurrentState = VoiceState.Quiet;
-            else if (a >= loudMin) CurrentState = VoiceState.Loud;
-            else CurrentState = VoiceState.Medium;
+            if (a <= quietMax) next = VoiceState.Quiet;
+            else if (a >= loudMin) next = VoiceState.Loud;
+            else next = VoiceState.Medium;
         }
         else if (CurrentState == VoiceState.Quiet)
         {
-            if (a > quietMax + hysteresis) CurrentState = VoiceState.Medium;
+            if (a > quietMax + hysteresis) next = VoiceState.Medium;
         }
         else if (CurrentState == VoiceState.Medium)
         {
-            if (a < quietMax - hysteresis) CurrentState = VoiceState.Quiet;
-            else if (a > loudMin + hysteresis) CurrentState = VoiceState.Loud;
+            if (a < quietMax - hysteresis) next = VoiceState.Quiet;
+            else if (a > loudMin + hysteresis) next = VoiceState.Loud;
         }
         else // Loud
         {
-            if (a < loudMin - hysteresis) CurrentState = VoiceState.Medium;
+            if (a < loudMin - hysteresis) next = VoiceState.Medium;
         }
 
-        // --- Apply actions ---
-        if (CurrentState == VoiceState.Quiet)
-        {
-            quietHoldTimer += Time.deltaTime;
-        }
-        else
-        {
-            quietHoldTimer = 0f;
-        }
+        CurrentState = next;
 
-        player.SetCrouch(quietHoldTimer >= quietHoldTime);
+        // IMPORTANT: While using spacebar confirm, DO NOT auto-crouch.
+        // (Crouch is an action you confirm, not a continuous state.)
+        player.SetCrouch(false);
 
-        if (CurrentState == VoiceState.Medium && jumpTimer <= 0f)
+        // --- Confirm with Spacebar ---
+        if (Input.GetKeyDown(confirmKey) && confirmTimer <= 0f)
         {
-            player.Jump();
-            jumpTimer = jumpCooldown;
+            confirmTimer = confirmCooldown;
+            ConfirmCurrentState();
         }
+    }
 
-        if (CurrentState == VoiceState.Loud && shootTimer <= 0f)
+    private void ConfirmCurrentState()
+    {
+        switch (CurrentState)
         {
-            player.Shoot();
-            shootTimer = shootCooldown;
+            case VoiceState.Quiet:
+                // Confirm crouch (toggle works well for UX)
+                player.ToggleCrouch();
+                break;
+
+            case VoiceState.Medium:
+                if (jumpTimer <= 0f)
+                {
+                    player.Jump();
+                    jumpTimer = jumpCooldown;
+                }
+                break;
+
+            case VoiceState.Loud:
+                if (shootTimer <= 0f)
+                {
+                    player.Shoot();
+                    shootTimer = shootCooldown;
+                }
+                break;
+
+            case VoiceState.Neutral:
+            default:
+                // Optional: do nothing
+                break;
         }
     }
 }

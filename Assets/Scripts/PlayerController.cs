@@ -57,6 +57,7 @@ public class PlayerController : MonoBehaviour
         if (isCrouching == crouch) return; // prevents repeated resizing every frame
         isCrouching = crouch;
 
+        // Preserve bottom position so the player doesn't pop up/down
         float bottomBefore = transform.position.y + col.offset.y - (col.size.y * 0.5f);
 
         col.size = crouch ? crouchingColliderSize : standingColliderSize;
@@ -67,16 +68,30 @@ public class PlayerController : MonoBehaviour
         col.offset = new Vector2(col.offset.x, col.offset.y + delta);
     }
 
+    // ✅ NEW: used by the spacebar-confirm system
+    public void ToggleCrouch()
+    {
+        SetCrouch(!isCrouching);
+    }
+
+    // (Optional) If you want to force stand from other scripts
+    public void StandUp()
+    {
+        SetCrouch(false);
+    }
 
     public void Shoot()
     {
         if (bulletPrefab == null || firePoint == null) return;
 
         GameObject bullet = Instantiate(bulletPrefab, firePoint.position, Quaternion.identity);
-        Rigidbody2D bulletRb = bullet.GetComponent<Rigidbody2D>();
 
+        Rigidbody2D bulletRb = bullet.GetComponent<Rigidbody2D>();
         if (bulletRb != null)
+        {
+            bulletRb.gravityScale = 0f;
             bulletRb.linearVelocity = Vector2.right * bulletSpeed;
+        }
 
         Destroy(bullet, 2f);
     }
@@ -93,7 +108,6 @@ public class PlayerController : MonoBehaviour
     }
 
 #if UNITY_EDITOR
-    // Draw the ground check circle in the Scene view
     void OnDrawGizmosSelected()
     {
         if (groundCheck == null) return;
