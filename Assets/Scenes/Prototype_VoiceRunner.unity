@@ -247,8 +247,8 @@ Transform:
   m_GameObject: {fileID: 21156832}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 10.833055, y: -6.9008007, z: 0}
-  m_LocalScale: {x: 53.776386, y: 4.258355, z: 1}
+  m_LocalPosition: {x: 163.33305, y: -6.9008007, z: 0}
+  m_LocalScale: {x: 358.77832, y: 4.258355, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -500,11 +500,12 @@ MonoBehaviour:
   loudMin: 0.08
   hysteresis: 0.02
   activationThreshold: 0.05
-  jumpCooldown: 0.25
-  shootCooldown: 0.15
-  quietHoldTime: 0.2
   neutralReturnThreshold: 0.01
   neutralHoldTime: 0.5
+  jumpCooldown: 0.25
+  shootCooldown: 0.15
+  confirmKey: 32
+  confirmCooldown: 0.12
 --- !u!114 &300893010
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -523,11 +524,12 @@ MonoBehaviour:
   loudMin: 0.375
   hysteresis: 0.02
   activationThreshold: 0.05
-  jumpCooldown: 0.25
-  shootCooldown: 0.15
-  quietHoldTime: 0.2
   neutralReturnThreshold: 0.01
   neutralHoldTime: 0.5
+  jumpCooldown: 0.25
+  shootCooldown: 0.15
+  confirmKey: 32
+  confirmCooldown: 0.12
 --- !u!4 &300893011
 Transform:
   m_ObjectHideFlags: 0
@@ -1226,6 +1228,37 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1146763130}
   m_CullTransparentMesh: 1
+--- !u!1 &1265243823
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1265243824}
+  m_Layer: 3
+  m_Name: FirePoint
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1265243824
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1265243823}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.71, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1797862341}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1348898345
 GameObject:
   m_ObjectHideFlags: 0
@@ -1334,18 +1367,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   runSpeed: 5
-  jumpForce: 6
+  jumpForce: 10
   groundCheck: {fileID: 634201568}
-  groundCheckRadius: 0.05
+  groundCheckRadius: 0.2
   groundLayer:
     serializedVersion: 2
     m_Bits: 8
   standingColliderSize: {x: 1, y: 1}
   crouchingColliderSize: {x: 1, y: 0.8}
-  standingColliderOffset: {x: 0, y: 0}
-  crouchingColliderOffset: {x: 0, y: 0}
-  bulletPrefab: {fileID: 0}
-  firePoint: {fileID: 0}
+  crouchVisualYScale: 0.65
+  bulletPrefab: {fileID: 4239330980890895945, guid: 9d67e7ce736992d49a1daeb9b5cd7381, type: 3}
+  firePoint: {fileID: 1265243824}
   bulletSpeed: 12
 --- !u!50 &1797862338
 Rigidbody2D:
@@ -1489,6 +1521,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 634201568}
+  - {fileID: 1265243824}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1864414265

@@ -15,6 +15,12 @@ public class MicUI : MonoBehaviour
 
     void Update()
     {
+        // Make the UI scale match your gameplay thresholds (so you can see orange/red progress)
+        if (voice != null)
+        {
+            meterMax = voice.loudMin * 1.15f; // a bit of headroom above Loud
+        }
+
         if (mic != null && meter != null)
         {
             meter.minValue = 0f;
@@ -32,18 +38,20 @@ public class MicUI : MonoBehaviour
         {
             switch (voice.CurrentState)
             {
+                case VoiceActionController.VoiceState.Neutral:
+                    meterFill.color = Color.gray;
+                    break;
                 case VoiceActionController.VoiceState.Quiet:
                     meterFill.color = Color.green;
                     break;
-
                 case VoiceActionController.VoiceState.Medium:
-                    meterFill.color = new Color(1f, 0.55f, 0f); // orange
+                    meterFill.color = new Color(1f, 0.55f, 0f);
                     break;
-
                 case VoiceActionController.VoiceState.Loud:
                     meterFill.color = Color.red;
                     break;
             }
         }
     }
+
 }

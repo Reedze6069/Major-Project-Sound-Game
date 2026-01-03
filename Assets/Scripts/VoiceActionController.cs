@@ -9,13 +9,18 @@ public class VoiceActionController : MonoBehaviour
     public MicrophoneInput mic;
     public PlayerController player;
 
-    [Header("Thresholds (tune during testing)")]
-    public float quietMax = 0.18f;   // <= quietMax = Quiet
-    public float loudMin = 0.375f;   // >= loudMin = Loud (else Medium)
+    [Header("Threshold Bands")]
+    [Tooltip("Anything below this is treated as Neutral (silence / noise floor).")]
+    public float quietMin = 0.015f;
+
+    [Tooltip("Quiet band upper bound.")]
+    public float quietMax = 0.18f;
+
+    [Tooltip("Loud band lower bound.")]
+    public float loudMin = 0.375f;
 
     [Header("Stability")]
     public float hysteresis = 0.02f;
-    public float activationThreshold = 0.05f;
 
     [Header("Neutral Return")]
     public float neutralReturnThreshold = 0.01f;
@@ -27,14 +32,14 @@ public class VoiceActionController : MonoBehaviour
 
     [Header("Spacebar Confirm")]
     public KeyCode confirmKey = KeyCode.Space;
-    public float confirmCooldown = 0.12f; // prevents double confirms from one press
+    public float confirmCooldown = 0.12f;
 
-    private float neutralTimer = 0f;
-    private float jumpTimer = 0f;
-    private float shootTimer = 0f;
-    private float confirmTimer = 0f;
+    float neutralTimer = 0f;
+    float jumpTimer = 0f;
+    float shootTimer = 0f;
+    float confirmTimer = 0f;
 
-    private bool hasActivated = false;
+    bool crouchLatched = false;
 
     void Update()
     {
@@ -42,8 +47,8 @@ public class VoiceActionController : MonoBehaviour
 
         float a = mic.SmoothedAmplitude;
 
-        jumpTimer -= Time.deltaTime;
-        shootTimer -= Time.deltaTime;
+        jumpTimer    -= Time.deltaTime;
+        shootTimer   -= Time.deltaTime;
         confirmTimer -= Time.deltaTime;
 
         // --- Neutral return (silence -> Neutral) ---
@@ -52,8 +57,8 @@ public class VoiceActionController : MonoBehaviour
             neutralTimer += Time.deltaTime;
             if (neutralTimer >= neutralHoldTime)
             {
-                CurrentState = VoiceState.Neutral;
-                player.SetCrouch(false);
+                SetState(VoiceState.Neutral);
+                ForceStand();
                 return;
             }
         }
@@ -62,62 +67,78 @@ public class VoiceActionController : MonoBehaviour
             neutralTimer = 0f;
         }
 
-        // --- Activation gate ---
-        if (!hasActivated)
-        {
-            CurrentState = VoiceState.Neutral;
+        // --- Update DISPLAY state with hysteresis ---
+        CurrentState = GetStateWithHysteresis(a, CurrentState);
 
-            if (a > activationThreshold)
-                hasActivated = true;
-
-            player.SetCrouch(false);
-            return;
-        }
-
-        // --- Detect state (with hysteresis) ---
-        VoiceState next = CurrentState;
-
-        if (CurrentState == VoiceState.Neutral)
-        {
-            if (a <= quietMax) next = VoiceState.Quiet;
-            else if (a >= loudMin) next = VoiceState.Loud;
-            else next = VoiceState.Medium;
-        }
-        else if (CurrentState == VoiceState.Quiet)
-        {
-            if (a > quietMax + hysteresis) next = VoiceState.Medium;
-        }
-        else if (CurrentState == VoiceState.Medium)
-        {
-            if (a < quietMax - hysteresis) next = VoiceState.Quiet;
-            else if (a > loudMin + hysteresis) next = VoiceState.Loud;
-        }
-        else // Loud
-        {
-            if (a < loudMin - hysteresis) next = VoiceState.Medium;
-        }
-
-        CurrentState = next;
-
-        // IMPORTANT: While using spacebar confirm, DO NOT auto-crouch.
-        // (Crouch is an action you confirm, not a continuous state.)
-        player.SetCrouch(false);
-
-        // --- Confirm with Spacebar ---
+        // --- Confirm with Spacebar (IMPORTANT: confirm by amplitude bands, not by CurrentState) ---
         if (Input.GetKeyDown(confirmKey) && confirmTimer <= 0f)
         {
             confirmTimer = confirmCooldown;
-            ConfirmCurrentState();
+
+            float ampAtPress = a;
+            VoiceState confirmed = GetStateFromAmplitude(ampAtPress);
+
+            Debug.Log($"[VAC] Space | confirmed={confirmed} amp={ampAtPress:F4} (quietMin={quietMin:F3} quietMax={quietMax:F3} loudMin={loudMin:F3})");
+
+            ConfirmState(confirmed);
         }
     }
 
-    private void ConfirmCurrentState()
+    // Pure band mapping (NO hysteresis) — used only for confirming actions.
+    private VoiceState GetStateFromAmplitude(float a)
     {
-        switch (CurrentState)
+        if (a < quietMin) return VoiceState.Neutral;
+        if (a <= quietMax) return VoiceState.Quiet;
+        if (a >= loudMin) return VoiceState.Loud;
+        return VoiceState.Medium;
+    }
+
+    // Hysteresis mapping — used for smoother UI/CurrentState display.
+    private VoiceState GetStateWithHysteresis(float a, VoiceState current)
+    {
+        // Treat under quietMin as Neutral always
+        if (a < quietMin) return VoiceState.Neutral;
+
+        switch (current)
+        {
+            case VoiceState.Neutral:
+                // Enter quiet/medium/loud based on amplitude
+                return GetStateFromAmplitude(a);
+
+            case VoiceState.Quiet:
+                // Stay quiet until we go clearly above quietMax
+                if (a > quietMax + hysteresis) return VoiceState.Medium;
+                return VoiceState.Quiet;
+
+            case VoiceState.Medium:
+                // Drop to quiet only if clearly below quietMax
+                if (a < quietMax - hysteresis) return VoiceState.Quiet;
+                // Rise to loud only if clearly above loudMin
+                if (a > loudMin + hysteresis) return VoiceState.Loud;
+                return VoiceState.Medium;
+
+            case VoiceState.Loud:
+                // Drop from loud only if clearly below loudMin
+                if (a < loudMin - hysteresis) return VoiceState.Medium;
+                return VoiceState.Loud;
+        }
+
+        return GetStateFromAmplitude(a);
+    }
+
+    private void ConfirmState(VoiceState confirmed)
+    {
+        // If it's not Quiet, we should NEVER remain crouched after pressing Space.
+        if (confirmed != VoiceState.Quiet)
+        {
+            ForceStand();
+        }
+
+        switch (confirmed)
         {
             case VoiceState.Quiet:
-                // Confirm crouch (toggle works well for UX)
-                player.ToggleCrouch();
+                crouchLatched = true;
+                player.SetCrouch(true);
                 break;
 
             case VoiceState.Medium:
@@ -138,8 +159,19 @@ public class VoiceActionController : MonoBehaviour
 
             case VoiceState.Neutral:
             default:
-                // Optional: do nothing
+                // already stood up
                 break;
         }
+    }
+
+    private void ForceStand()
+    {
+        crouchLatched = false;
+        player.StandUp();
+    }
+
+    private void SetState(VoiceState s)
+    {
+        CurrentState = s;
     }
 }

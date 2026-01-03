@@ -11,16 +11,15 @@ public class PlayerController : MonoBehaviour
     public float groundCheckRadius = 0.15f;
     public LayerMask groundLayer;
 
-    [Header("Crouch")]
+    [Header("Crouch (Collider)")]
     public Vector2 standingColliderSize = new Vector2(1f, 1.5f);
     public Vector2 crouchingColliderSize = new Vector2(1f, 0.8f);
+
+    [Header("Crouch (Visual)")]
+    [Tooltip("Makes the cube visually crouch too. 1 = normal height, 0.6-0.8 = crouched height.")]
+    public float crouchVisualYScale = 0.65f;
+
     private bool isCrouching;
-
-    [Tooltip("Adjust so the bottom of the standing collider stays on the ground (usually size.y / 2 if pivot is centered).")]
-    public Vector2 standingColliderOffset = new Vector2(0f, 0.75f);
-
-    [Tooltip("Adjust so the bottom of the crouching collider stays on the ground (usually size.y / 2 if pivot is centered).")]
-    public Vector2 crouchingColliderOffset = new Vector2(0f, 0.4f);
 
     [Header("Shoot")]
     public GameObject bulletPrefab;
@@ -30,10 +29,13 @@ public class PlayerController : MonoBehaviour
     private Rigidbody2D rb;
     private BoxCollider2D col;
 
+    private Vector3 originalScale;
+
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         col = GetComponent<BoxCollider2D>();
+        originalScale = transform.localScale;
     }
 
     void FixedUpdate()
@@ -41,40 +43,47 @@ public class PlayerController : MonoBehaviour
         // Auto-run forward (keep Y velocity for gravity/jumps)
         rb.linearVelocity = new Vector2(runSpeed, rb.linearVelocity.y);
     }
-
     public void Jump()
     {
         if (!IsGrounded()) return;
 
-        // reset vertical velocity before applying impulse for consistent jump height
+        // Reset vertical velocity before applying impulse for consistent jump height
         rb.linearVelocity = new Vector2(rb.linearVelocity.x, 0f);
         rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
     }
 
     public void SetCrouch(bool crouch)
     {
+        Debug.Log($"[PlayerController] SetCrouch({crouch}) called\n{UnityEngine.StackTraceUtility.ExtractStackTrace()}");
+
         if (col == null) return;
-        if (isCrouching == crouch) return; // prevents repeated resizing every frame
+        if (isCrouching == crouch) return;
+
         isCrouching = crouch;
 
         // Preserve bottom position so the player doesn't pop up/down
         float bottomBefore = transform.position.y + col.offset.y - (col.size.y * 0.5f);
 
+        // Collider resize
         col.size = crouch ? crouchingColliderSize : standingColliderSize;
 
-        float bottomAfterWithoutFix = transform.position.y + col.offset.y - (col.size.y * 0.5f);
-        float delta = bottomBefore - bottomAfterWithoutFix;
+        float bottomAfter = transform.position.y + col.offset.y - (col.size.y * 0.5f);
+        float delta = bottomBefore - bottomAfter;
 
         col.offset = new Vector2(col.offset.x, col.offset.y + delta);
+
+        // Visual crouch (so your cube actually LOOKS like it's crouching)
+        if (crouch)
+            transform.localScale = new Vector3(originalScale.x, originalScale.y * crouchVisualYScale, originalScale.z);
+        else
+            transform.localScale = originalScale;
     }
 
-    // ✅ NEW: used by the spacebar-confirm system
     public void ToggleCrouch()
     {
         SetCrouch(!isCrouching);
     }
 
-    // (Optional) If you want to force stand from other scripts
     public void StandUp()
     {
         SetCrouch(false);
@@ -100,11 +109,8 @@ public class PlayerController : MonoBehaviour
     {
         if (groundCheck == null) return false;
 
-        return Physics2D.OverlapCircle(
-            groundCheck.position,
-            groundCheckRadius,
-            groundLayer
-        );
+        // This is fine as long as GroundCheck is at the feet.
+        return Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundLayer);
     }
 
 #if UNITY_EDITOR
@@ -114,4 +120,5 @@ public class PlayerController : MonoBehaviour
         Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
     }
 #endif
+    
 }
