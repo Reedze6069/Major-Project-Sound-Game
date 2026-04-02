@@ -124,6 +124,9 @@ public class SoundVisionSystem : MonoBehaviour
         for (int i = 0; i < hits.Length; i++)
         {
             SoundReveal r = hits[i].GetComponent<SoundReveal>();
+            if (r == null) r = hits[i].GetComponentInParent<SoundReveal>();
+            if (r == null) r = hits[i].GetComponentInChildren<SoundReveal>();
+
             if (r != null) r.Reveal(intensity);
         }
     }
@@ -139,14 +142,19 @@ public class SoundVisionSystem : MonoBehaviour
 
         for (int i = 0; i < hits.Length; i++)
         {
-            Vector2 to = (Vector2)hits[i].transform.position - (Vector2)player.position;
+            Vector2 closest = hits[i].ClosestPoint(player.position);
+            Vector2 to = closest - (Vector2)player.position;
+
             if (to.sqrMagnitude < 0.0001f) continue;
 
             float ang = Vector2.Angle(forward, to.normalized);
             if (ang <= half)
             {
                 SoundReveal r = hits[i].GetComponent<SoundReveal>();
-                if (r != null) r.Reveal(intensity);
+                if (r == null) r = hits[i].GetComponentInParent<SoundReveal>();
+                if (r == null) r = hits[i].GetComponentInChildren<SoundReveal>();
+
+                if (r != null) r.Reveal(intensity);                if (r != null) r.Reveal(intensity);
             }
         }
     }

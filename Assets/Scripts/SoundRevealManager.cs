@@ -32,7 +32,10 @@ public class SoundRevealManager : MonoBehaviour
         {
             if (r == null) continue;
 
-            float d = Vector2.Distance(player.position, r.transform.position);
+            Collider2D col = r.GetComponent<Collider2D>();
+            if (col == null) continue;
+
+            float d = Vector2.Distance(player.position, col.ClosestPoint(player.position));            
             if (d <= testRadius)
             {
                 r.Reveal(testIntensity);

@@ -91,6 +91,11 @@ public class PlayerController : MonoBehaviour
 
     public void Shoot()
     {
+        Shoot(Vector2.right);
+    }
+
+    public void Shoot(Vector2 direction)
+    {
         if (bulletPrefab == null || firePoint == null) return;
 
         GameObject bullet = Instantiate(bulletPrefab, firePoint.position, Quaternion.identity);
@@ -99,7 +104,8 @@ public class PlayerController : MonoBehaviour
         if (bulletRb != null)
         {
             bulletRb.gravityScale = 0f;
-            bulletRb.linearVelocity = Vector2.right * bulletSpeed;
+            Vector2 shootDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector2.right;
+            bulletRb.linearVelocity = shootDirection * bulletSpeed;
         }
 
         Destroy(bullet, 2f);

@@ -8,6 +8,7 @@ public class VoiceActionController : MonoBehaviour
     [Header("References")]
     public MicrophoneInput mic;
     public PlayerController player;
+    public LaneCrosshairController laneCrosshair;
 
     [Header("Threshold Bands")]
     [Tooltip("Anything below this is treated as Neutral (silence / noise floor).")]
@@ -20,7 +21,11 @@ public class VoiceActionController : MonoBehaviour
     public float loudMin = 0.375f;
 
     [Header("Stability")]
-    public float hysteresis = 0.02f;
+    [Tooltip("Extra margin needed to move upward into a stronger band.")]
+    public float riseHysteresis = 0.02f;
+
+    [Tooltip("Small margin used when falling back down, so Quiet is easier to re-enter.")]
+    public float fallHysteresis = 0.005f;
 
     [Header("Neutral Return")]
     public float neutralReturnThreshold = 0.01f;
@@ -40,6 +45,7 @@ public class VoiceActionController : MonoBehaviour
     float confirmTimer = 0f;
 
     bool crouchLatched = false;
+    bool isLoudAiming = false;
 
     void Update()
     {
@@ -50,6 +56,11 @@ public class VoiceActionController : MonoBehaviour
         jumpTimer    -= Time.deltaTime;
         shootTimer   -= Time.deltaTime;
         confirmTimer -= Time.deltaTime;
+
+        if (isLoudAiming && Input.GetKeyUp(confirmKey))
+        {
+            ReleaseLoudAim();
+        }
 
         // --- Neutral return (silence -> Neutral) ---
         if (a < neutralReturnThreshold)
@@ -70,18 +81,29 @@ public class VoiceActionController : MonoBehaviour
         // --- Update DISPLAY state with hysteresis ---
         CurrentState = GetStateWithHysteresis(a, CurrentState);
 
+        if (isLoudAiming && laneCrosshair != null && CurrentState != VoiceState.Neutral)
+        {
+            laneCrosshair.SetLane(CurrentState);
+        }
+
         // --- Confirm with Spacebar (IMPORTANT: confirm by amplitude bands, not by CurrentState) ---
         if (Input.GetKeyDown(confirmKey) && confirmTimer <= 0f)
         {
             confirmTimer = confirmCooldown;
 
-            float ampAtPress = a;
-            VoiceState confirmed = GetStateFromAmplitude(ampAtPress);
+            VoiceState confirmed = GetStateFromAmplitude(a);
 
-            Debug.Log($"[VAC] Space | confirmed={confirmed} amp={ampAtPress:F4} (quietMin={quietMin:F3} quietMax={quietMax:F3} loudMin={loudMin:F3})");
+            if (confirmed == VoiceState.Loud && laneCrosshair != null)
+            {
+                BeginLoudAim();
+                return;
+            }
+
+            Debug.Log($"[VAC] Space | confirmed={confirmed} amp={{a:F4}} (quietMin={quietMin:F3} quietMax={quietMax:F3} loudMin={loudMin:F3})");
 
             ConfirmState(confirmed);
         }
+
     }
 
     // Pure band mapping (NO hysteresis) — used only for confirming actions.
@@ -106,20 +128,18 @@ public class VoiceActionController : MonoBehaviour
                 return GetStateFromAmplitude(a);
 
             case VoiceState.Quiet:
-                // Stay quiet until we go clearly above quietMax
-                if (a > quietMax + hysteresis) return VoiceState.Medium;
+                if (a >= loudMin + riseHysteresis) return VoiceState.Loud;
+                if (a > quietMax + riseHysteresis) return VoiceState.Medium;
                 return VoiceState.Quiet;
 
             case VoiceState.Medium:
-                // Drop to quiet only if clearly below quietMax
-                if (a < quietMax - hysteresis) return VoiceState.Quiet;
-                // Rise to loud only if clearly above loudMin
-                if (a > loudMin + hysteresis) return VoiceState.Loud;
+                if (a <= quietMax - fallHysteresis) return VoiceState.Quiet;
+                if (a >= loudMin + riseHysteresis) return VoiceState.Loud;
                 return VoiceState.Medium;
 
             case VoiceState.Loud:
-                // Drop from loud only if clearly below loudMin
-                if (a < loudMin - hysteresis) return VoiceState.Medium;
+                if (a <= quietMax - fallHysteresis) return VoiceState.Quiet;
+                if (a <= loudMin - fallHysteresis) return VoiceState.Medium;
                 return VoiceState.Loud;
         }
 
@@ -168,6 +188,34 @@ public class VoiceActionController : MonoBehaviour
     {
         crouchLatched = false;
         player.StandUp();
+    }
+
+    private void BeginLoudAim()
+    {
+        if (laneCrosshair == null || player == null) return;
+
+        isLoudAiming = true;
+        ForceStand();
+        laneCrosshair.Show(player.firePoint != null ? player.firePoint : player.transform);
+        laneCrosshair.SetLane(CurrentState);
+    }
+
+    private void ReleaseLoudAim()
+    {
+        isLoudAiming = false;
+
+        if (laneCrosshair == null || player == null)
+            return;
+
+        Vector2 origin = player.firePoint != null ? player.firePoint.position : player.transform.position;
+
+        if (shootTimer <= 0f)
+        {
+            player.Shoot(laneCrosshair.GetAimDirection(origin));
+            shootTimer = shootCooldown;
+        }
+
+        laneCrosshair.Hide();
     }
 
     private void SetState(VoiceState s)
