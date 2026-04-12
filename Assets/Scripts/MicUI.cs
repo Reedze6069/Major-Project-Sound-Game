@@ -1,6 +1,6 @@
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 
 public class MicUI : MonoBehaviour
 {
@@ -8,10 +8,14 @@ public class MicUI : MonoBehaviour
     public VoiceActionController voice;
 
     public Slider meter;
-    public Image meterFill;          // Drag Slider/Fill Area/Fill here
+    public Image meterFill;
     public TMP_Text stateText;
 
-    public float meterMax = 0.5f;    // increase so it doesn’t peg at max
+    public float meterMax = 0.5f;
+    [Range(0.01f, 0.5f)] public float meterSmoothTime = 0.12f;
+
+    private float displayedMeterValue;
+    private float meterVelocity;
 
     void Update()
     {
@@ -33,25 +37,27 @@ public class MicUI : MonoBehaviour
                     break;
             }
         }
-        // Make the UI scale match your gameplay thresholds (so you can see orange/red progress)
-        if (voice != null)
-        {
-            meterMax = voice.loudMin * 1.15f; // a bit of headroom above Loud
-        }
 
         if (mic != null && meter != null)
         {
             meter.minValue = 0f;
             meter.maxValue = meterMax;
-            meter.value = Mathf.Min(mic.SmoothedAmplitude, meterMax);
+
+            if (voice != null)
+            {
+                meterMax = voice.loudMin * 1.15f;
+                meter.maxValue = meterMax;
+            }
+
+            float targetValue = Mathf.Min(mic.SmoothedAmplitude, meterMax);
+            displayedMeterValue = Mathf.SmoothDamp(displayedMeterValue, targetValue, ref meterVelocity, meterSmoothTime);
+            meter.value = displayedMeterValue;
         }
 
         if (stateText != null && mic != null)
         {
-            string v = (voice != null) ? voice.CurrentState.ToString() : "N/A";
-            stateText.text = $"Voice: {v}";        }
-
-       
+            string v = voice != null ? voice.CurrentState.ToString() : "N/A";
+            stateText.text = $"Voice: {v}";
+        }
     }
-
 }

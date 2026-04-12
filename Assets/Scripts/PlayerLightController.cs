@@ -18,10 +18,27 @@ public class PlayerLightController : MonoBehaviour
 
     [Header("Smoothing")]
     public float smooth = 10f;
+    [Tooltip("How long the light holds its expanded size before shrinking.")]
+    public float decayDelay = 0.15f;
+
+    float decayTimer;
+    float currentTargetRadius;
+    float currentTargetIntensity;
 
     void Reset()
     {
         light2D = GetComponent<Light2D>();
+    }
+
+    void Start()
+    {
+        currentTargetRadius = baseOuterRadius;
+        currentTargetIntensity = baseIntensity;
+
+        if (light2D == null) return;
+
+        light2D.pointLightOuterRadius = baseOuterRadius;
+        light2D.intensity = baseIntensity;
     }
 
     void Update()
@@ -36,10 +53,30 @@ public class PlayerLightController : MonoBehaviour
         float targetRadius = baseOuterRadius + (maxRadiusBoost * t);
         float targetIntensity = baseIntensity + (maxIntensityBoost * t);
 
+        bool expanding =
+            targetRadius >= currentTargetRadius ||
+            targetIntensity >= currentTargetIntensity;
+
+        if (expanding)
+        {
+            currentTargetRadius = targetRadius;
+            currentTargetIntensity = targetIntensity;
+            decayTimer = decayDelay;
+        }
+        else if (decayTimer > 0f)
+        {
+            decayTimer -= Time.deltaTime;
+        }
+        else
+        {
+            currentTargetRadius = targetRadius;
+            currentTargetIntensity = targetIntensity;
+        }
+
         light2D.pointLightOuterRadius =
-            Mathf.Lerp(light2D.pointLightOuterRadius, targetRadius, Time.deltaTime * smooth);
+            Mathf.Lerp(light2D.pointLightOuterRadius, currentTargetRadius, Time.deltaTime * smooth);
 
         light2D.intensity =
-            Mathf.Lerp(light2D.intensity, targetIntensity, Time.deltaTime * smooth);
+            Mathf.Lerp(light2D.intensity, currentTargetIntensity, Time.deltaTime * smooth);
     }
 }

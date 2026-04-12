@@ -15,17 +15,20 @@ public class VoiceActionController : MonoBehaviour
     public float quietMin = 0.015f;
 
     [Tooltip("Quiet band upper bound.")]
-    public float quietMax = 0.18f;
+    public float quietMax = 0.16f;
 
     [Tooltip("Loud band lower bound.")]
-    public float loudMin = 0.375f;
+    public float loudMin = 0.44f;
 
     [Header("Stability")]
     [Tooltip("Extra margin needed to move upward into a stronger band.")]
     public float riseHysteresis = 0.02f;
 
     [Tooltip("Small margin used when falling back down, so Quiet is easier to re-enter.")]
-    public float fallHysteresis = 0.005f;
+    public float fallHysteresis = 0.02f;
+
+    [Tooltip("How long a new band must stay stable before the state changes.")]
+    public float stateChangeHoldTime = 0.1f;
 
     [Header("Neutral Return")]
     public float neutralReturnThreshold = 0.01f;
@@ -35,7 +38,8 @@ public class VoiceActionController : MonoBehaviour
     public float jumpCooldown = 0.25f;
     public float shootCooldown = 0.15f;
 
-    [Header("Spacebar Confirm")]
+    [Header("Confirm Input")]
+    public bool allowKeyboardConfirm = true;
     public KeyCode confirmKey = KeyCode.Space;
     public float confirmCooldown = 0.12f;
 
@@ -43,21 +47,27 @@ public class VoiceActionController : MonoBehaviour
     float jumpTimer = 0f;
     float shootTimer = 0f;
     float confirmTimer = 0f;
+    float pendingStateTimer = 0f;
 
     bool crouchLatched = false;
     bool isLoudAiming = false;
+    VoiceState pendingState;
+
+    void Awake()
+    {
+        pendingState = CurrentState;
+    }
 
     void Update()
     {
         if (mic == null || player == null) return;
 
         float a = mic.SmoothedAmplitude;
-
         jumpTimer    -= Time.deltaTime;
         shootTimer   -= Time.deltaTime;
         confirmTimer -= Time.deltaTime;
 
-        if (isLoudAiming && Input.GetKeyUp(confirmKey))
+        if (isLoudAiming && allowKeyboardConfirm && Input.GetKeyUp(confirmKey))
         {
             ReleaseLoudAim();
         }
@@ -69,6 +79,8 @@ public class VoiceActionController : MonoBehaviour
             if (neutralTimer >= neutralHoldTime)
             {
                 SetState(VoiceState.Neutral);
+                pendingState = CurrentState;
+                pendingStateTimer = 0f;
                 ForceStand();
                 return;
             }
@@ -79,31 +91,18 @@ public class VoiceActionController : MonoBehaviour
         }
 
         // --- Update DISPLAY state with hysteresis ---
-        CurrentState = GetStateWithHysteresis(a, CurrentState);
+        ApplyStableState(a);
 
         if (isLoudAiming && laneCrosshair != null && CurrentState != VoiceState.Neutral)
         {
             laneCrosshair.SetLane(CurrentState);
         }
 
-        // --- Confirm with Spacebar (IMPORTANT: confirm by amplitude bands, not by CurrentState) ---
-        if (Input.GetKeyDown(confirmKey) && confirmTimer <= 0f)
+        if (allowKeyboardConfirm && Input.GetKeyDown(confirmKey) && confirmTimer <= 0f)
         {
-            confirmTimer = confirmCooldown;
-
-            VoiceState confirmed = GetStateFromAmplitude(a);
-
-            if (confirmed == VoiceState.Loud && laneCrosshair != null)
-            {
-                BeginLoudAim();
-                return;
-            }
-
-            Debug.Log($"[VAC] Space | confirmed={confirmed} amp={{a:F4}} (quietMin={quietMin:F3} quietMax={quietMax:F3} loudMin={loudMin:F3})");
-
-            ConfirmState(confirmed);
+            VoiceState confirmed = GetStateFromAmplitude(mic.SmoothedAmplitude);
+            ConfirmResolvedState(confirmed, "Space", allowLoudAim: true);
         }
-
     }
 
     // Pure band mapping (NO hysteresis) — used only for confirming actions.
@@ -146,9 +145,35 @@ public class VoiceActionController : MonoBehaviour
         return GetStateFromAmplitude(a);
     }
 
+    private void ApplyStableState(float amplitude)
+    {
+        VoiceState targetState = GetStateWithHysteresis(amplitude, CurrentState);
+
+        if (targetState == CurrentState)
+        {
+            pendingState = CurrentState;
+            pendingStateTimer = 0f;
+            return;
+        }
+
+        if (targetState != pendingState)
+        {
+            pendingState = targetState;
+            pendingStateTimer = 0f;
+            return;
+        }
+
+        pendingStateTimer += Time.deltaTime;
+        if (pendingStateTimer >= stateChangeHoldTime)
+        {
+            SetState(pendingState);
+            pendingStateTimer = 0f;
+        }
+    }
+
     private void ConfirmState(VoiceState confirmed)
     {
-        // If it's not Quiet, we should NEVER remain crouched after pressing Space.
+        // If it's not Quiet, we should never remain crouched after any confirm input.
         if (confirmed != VoiceState.Quiet)
         {
             ForceStand();
@@ -188,6 +213,27 @@ public class VoiceActionController : MonoBehaviour
     {
         crouchLatched = false;
         player.StandUp();
+    }
+
+    private void ConfirmResolvedState(VoiceState confirmed, string sourceLabel, bool allowLoudAim)
+    {
+        confirmTimer = confirmCooldown;
+
+        if (isLoudAiming)
+        {
+            ReleaseLoudAim();
+            return;
+        }
+
+        if (confirmed == VoiceState.Loud && laneCrosshair != null && allowLoudAim)
+        {
+            BeginLoudAim();
+            return;
+        }
+
+        Debug.Log($"[VAC] {sourceLabel} | confirmed={confirmed} amp={mic.SmoothedAmplitude:F4} (quietMin={quietMin:F3} quietMax={quietMax:F3} loudMin={loudMin:F3})");
+
+        ConfirmState(confirmed);
     }
 
     private void BeginLoudAim()

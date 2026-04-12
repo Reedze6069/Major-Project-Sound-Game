@@ -1,9 +1,10 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public class PlayerController : MonoBehaviour
 {
-    [Header("Movement")]
-    public float runSpeed = 5f;
+    [FormerlySerializedAs("runSpeed")] [Header("Movement")]
+    public float runspeed = 5f;
 
     [Header("Jump")]
     public float jumpForce = 8f;
@@ -25,6 +26,8 @@ public class PlayerController : MonoBehaviour
     public GameObject bulletPrefab;
     public Transform firePoint;
     public float bulletSpeed = 12f;
+    public float homingLockAngle = 18f;
+    public float homingLockRange = 18f;
 
     private Rigidbody2D rb;
     private BoxCollider2D col;
@@ -41,7 +44,7 @@ public class PlayerController : MonoBehaviour
     void FixedUpdate()
     {
         // Auto-run forward (keep Y velocity for gravity/jumps)
-        rb.linearVelocity = new Vector2(runSpeed, rb.linearVelocity.y);
+        rb.linearVelocity = new Vector2(runspeed, rb.linearVelocity.y);
     }
     public void Jump()
     {
@@ -99,16 +102,53 @@ public class PlayerController : MonoBehaviour
         if (bulletPrefab == null || firePoint == null) return;
 
         GameObject bullet = Instantiate(bulletPrefab, firePoint.position, Quaternion.identity);
+        Vector2 shootDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector2.right;
+        Transform target = FindBestEnemyTarget(firePoint.position, shootDirection);
 
         Rigidbody2D bulletRb = bullet.GetComponent<Rigidbody2D>();
         if (bulletRb != null)
         {
             bulletRb.gravityScale = 0f;
-            Vector2 shootDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector2.right;
             bulletRb.linearVelocity = shootDirection * bulletSpeed;
         }
 
+        HomingProjectile2D homing = bullet.GetComponent<HomingProjectile2D>();
+        if (homing == null)
+            homing = bullet.AddComponent<HomingProjectile2D>();
+
+        homing.Init(shootDirection, bulletSpeed, target);
+
         Destroy(bullet, 2f);
+    }
+
+    Transform FindBestEnemyTarget(Vector2 origin, Vector2 direction)
+    {
+        TrackingEnemy2D[] enemies = FindObjectsOfType<TrackingEnemy2D>();
+        TrackingEnemy2D bestEnemy = null;
+        float bestDistance = float.MaxValue;
+
+        for (int i = 0; i < enemies.Length; i++)
+        {
+            if (enemies[i] == null || !enemies[i].gameObject.activeInHierarchy)
+                continue;
+
+            Vector2 toEnemy = (Vector2)enemies[i].transform.position - origin;
+            float distance = toEnemy.magnitude;
+            if (distance > homingLockRange || distance <= 0.001f)
+                continue;
+
+            float angle = Vector2.Angle(direction, toEnemy.normalized);
+            if (angle > homingLockAngle)
+                continue;
+
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestEnemy = enemies[i];
+            }
+        }
+
+        return bestEnemy != null ? bestEnemy.transform : null;
     }
 
     bool IsGrounded()

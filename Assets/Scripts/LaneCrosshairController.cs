@@ -5,6 +5,7 @@ public class LaneCrosshairController : MonoBehaviour
     public enum AimLane { Low, Middle, High }
 
     [Header("Placement")]
+    public bool allowDownwardAim = false;
     public Transform anchor;
     public float xOffset = 6f;
     public float lowLaneY = -1.5f;
@@ -65,7 +66,7 @@ public class LaneCrosshairController : MonoBehaviour
         switch (state)
         {
             case VoiceActionController.VoiceState.Quiet:
-                currentLane = AimLane.Low;
+                currentLane = allowDownwardAim ? AimLane.Low : AimLane.Middle;
                 break;
 
             case VoiceActionController.VoiceState.Medium:
