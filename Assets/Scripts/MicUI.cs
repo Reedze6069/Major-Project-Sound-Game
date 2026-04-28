@@ -23,8 +23,8 @@ public class MicUI : MonoBehaviour
         {
             switch (voice.CurrentState)
             {
-                case VoiceActionController.VoiceState.Neutral:
-                    meterFill.color = Color.gray;
+                case VoiceActionController.VoiceState.Idle:
+                    meterFill.color = new Color(0.35f, 0.35f, 0.35f);
                     break;
                 case VoiceActionController.VoiceState.Quiet:
                     meterFill.color = Color.green;
@@ -54,10 +54,26 @@ public class MicUI : MonoBehaviour
             meter.value = displayedMeterValue;
         }
 
-        if (stateText != null && mic != null)
+        if (stateText != null)
         {
-            string v = voice != null ? voice.CurrentState.ToString() : "N/A";
-            stateText.text = $"Voice: {v}";
+            string actionLabel = voice != null ? GetActionLabel(voice.CurrentState) : "N/A";
+            stateText.text = $"Action: {actionLabel}";
+        }
+    }
+
+    private static string GetActionLabel(VoiceActionController.VoiceState state)
+    {
+        switch (state)
+        {
+            case VoiceActionController.VoiceState.Quiet:
+                return "Crouch";
+            case VoiceActionController.VoiceState.Medium:
+                return "Jump";
+            case VoiceActionController.VoiceState.Loud:
+                return "Shoot";
+            case VoiceActionController.VoiceState.Idle:
+            default:
+                return "Idle";
         }
     }
 }

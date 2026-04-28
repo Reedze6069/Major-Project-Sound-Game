@@ -65,6 +65,10 @@ public class LaneCrosshairController : MonoBehaviour
     {
         switch (state)
         {
+            case VoiceActionController.VoiceState.Idle:
+                currentLane = AimLane.Middle;
+                break;
+
             case VoiceActionController.VoiceState.Quiet:
                 currentLane = allowDownwardAim ? AimLane.Low : AimLane.Middle;
                 break;

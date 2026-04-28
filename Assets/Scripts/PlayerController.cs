@@ -33,12 +33,28 @@ public class PlayerController : MonoBehaviour
     private BoxCollider2D col;
 
     private Vector3 originalScale;
+    private Vector2 standingColliderOffset;
+    private Vector2 crouchingColliderOffset;
+    private Vector3 crouchingScale;
 
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         col = GetComponent<BoxCollider2D>();
         originalScale = transform.localScale;
+
+        if (col != null)
+        {
+            standingColliderOffset = col.offset;
+            crouchingColliderOffset = CalculateBottomAnchoredOffset(crouchingColliderSize);
+        }
+
+        crouchingScale = new Vector3(
+            originalScale.x,
+            originalScale.y * crouchVisualYScale,
+            originalScale.z);
+
+        ApplyCrouchState(false);
     }
 
     void FixedUpdate()
@@ -57,29 +73,11 @@ public class PlayerController : MonoBehaviour
 
     public void SetCrouch(bool crouch)
     {
-        Debug.Log($"[PlayerController] SetCrouch({crouch}) called\n{UnityEngine.StackTraceUtility.ExtractStackTrace()}");
-
         if (col == null) return;
         if (isCrouching == crouch) return;
 
         isCrouching = crouch;
-
-        // Preserve bottom position so the player doesn't pop up/down
-        float bottomBefore = transform.position.y + col.offset.y - (col.size.y * 0.5f);
-
-        // Collider resize
-        col.size = crouch ? crouchingColliderSize : standingColliderSize;
-
-        float bottomAfter = transform.position.y + col.offset.y - (col.size.y * 0.5f);
-        float delta = bottomBefore - bottomAfter;
-
-        col.offset = new Vector2(col.offset.x, col.offset.y + delta);
-
-        // Visual crouch (so your cube actually LOOKS like it's crouching)
-        if (crouch)
-            transform.localScale = new Vector3(originalScale.x, originalScale.y * crouchVisualYScale, originalScale.z);
-        else
-            transform.localScale = originalScale;
+        ApplyCrouchState(crouch);
     }
 
     public void ToggleCrouch()
@@ -157,6 +155,22 @@ public class PlayerController : MonoBehaviour
 
         // This is fine as long as GroundCheck is at the feet.
         return Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundLayer);
+    }
+
+    private void ApplyCrouchState(bool crouch)
+    {
+        if (col == null) return;
+
+        col.size = crouch ? crouchingColliderSize : standingColliderSize;
+        col.offset = crouch ? crouchingColliderOffset : standingColliderOffset;
+        transform.localScale = crouch ? crouchingScale : originalScale;
+    }
+
+    private Vector2 CalculateBottomAnchoredOffset(Vector2 targetSize)
+    {
+        float standingBottom = standingColliderOffset.y - (standingColliderSize.y * 0.5f);
+        float targetOffsetY = standingBottom + (targetSize.y * 0.5f);
+        return new Vector2(standingColliderOffset.x, targetOffsetY);
     }
 
 #if UNITY_EDITOR

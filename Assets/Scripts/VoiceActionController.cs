@@ -1,9 +1,10 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public class VoiceActionController : MonoBehaviour
 {
-    public enum VoiceState { Neutral, Quiet, Medium, Loud }
-    public VoiceState CurrentState { get; private set; } = VoiceState.Neutral;
+    public enum VoiceState { Idle, Quiet, Medium, Loud }
+    public VoiceState CurrentState { get; private set; } = VoiceState.Idle;
 
     [Header("References")]
     public MicrophoneInput mic;
@@ -11,8 +12,9 @@ public class VoiceActionController : MonoBehaviour
     public LaneCrosshairController laneCrosshair;
 
     [Header("Threshold Bands")]
-    [Tooltip("Anything below this is treated as Neutral (silence / noise floor).")]
-    public float quietMin = 0.015f;
+    [FormerlySerializedAs("neutralReturnThreshold")]
+    [Tooltip("Anything below this is treated as Idle (silence / noise floor).")]
+    public float idleThreshold = 0.01f;
 
     [Tooltip("Quiet band upper bound.")]
     public float quietMax = 0.16f;
@@ -30,24 +32,29 @@ public class VoiceActionController : MonoBehaviour
     [Tooltip("How long a new band must stay stable before the state changes.")]
     public float stateChangeHoldTime = 0.1f;
 
-    [Header("Neutral Return")]
-    public float neutralReturnThreshold = 0.01f;
-    public float neutralHoldTime = 0.5f;
+    [Header("Idle Return")]
+    [FormerlySerializedAs("neutralHoldTime")]
+    public float idleHoldTime = 0.5f;
 
     [Header("Cooldowns")]
     public float jumpCooldown = 0.25f;
     public float shootCooldown = 0.15f;
+
+    [Header("Quiet Action")]
+    [Tooltip("How long the player stays in the slide/crouch after confirming Quiet.")]
+    public float crouchDuration = 0.35f;
 
     [Header("Confirm Input")]
     public bool allowKeyboardConfirm = true;
     public KeyCode confirmKey = KeyCode.Space;
     public float confirmCooldown = 0.12f;
 
-    float neutralTimer = 0f;
+    float idleTimer = 0f;
     float jumpTimer = 0f;
     float shootTimer = 0f;
     float confirmTimer = 0f;
     float pendingStateTimer = 0f;
+    float crouchTimer = 0f;
 
     bool crouchLatched = false;
     bool isLoudAiming = false;
@@ -67,18 +74,27 @@ public class VoiceActionController : MonoBehaviour
         shootTimer   -= Time.deltaTime;
         confirmTimer -= Time.deltaTime;
 
+        if (crouchLatched)
+        {
+            crouchTimer -= Time.deltaTime;
+            if (crouchTimer <= 0f)
+            {
+                ForceStand();
+            }
+        }
+
         if (isLoudAiming && allowKeyboardConfirm && Input.GetKeyUp(confirmKey))
         {
             ReleaseLoudAim();
         }
 
-        // --- Neutral return (silence -> Neutral) ---
-        if (a < neutralReturnThreshold)
+        // Hold the last action briefly before falling back to idle.
+        if (a < idleThreshold)
         {
-            neutralTimer += Time.deltaTime;
-            if (neutralTimer >= neutralHoldTime)
+            idleTimer += Time.deltaTime;
+            if (idleTimer >= idleHoldTime)
             {
-                SetState(VoiceState.Neutral);
+                SetState(VoiceState.Idle);
                 pendingState = CurrentState;
                 pendingStateTimer = 0f;
                 ForceStand();
@@ -87,20 +103,20 @@ public class VoiceActionController : MonoBehaviour
         }
         else
         {
-            neutralTimer = 0f;
+            idleTimer = 0f;
         }
 
-        // --- Update DISPLAY state with hysteresis ---
+        // Update the displayed action state with hysteresis.
         ApplyStableState(a);
 
-        if (isLoudAiming && laneCrosshair != null && CurrentState != VoiceState.Neutral)
+        if (isLoudAiming && laneCrosshair != null && CurrentState != VoiceState.Idle)
         {
             laneCrosshair.SetLane(CurrentState);
         }
 
         if (allowKeyboardConfirm && Input.GetKeyDown(confirmKey) && confirmTimer <= 0f)
         {
-            VoiceState confirmed = GetStateFromAmplitude(mic.SmoothedAmplitude);
+            VoiceState confirmed = CurrentState;
             ConfirmResolvedState(confirmed, "Space", allowLoudAim: true);
         }
     }
@@ -108,7 +124,7 @@ public class VoiceActionController : MonoBehaviour
     // Pure band mapping (NO hysteresis) — used only for confirming actions.
     private VoiceState GetStateFromAmplitude(float a)
     {
-        if (a < quietMin) return VoiceState.Neutral;
+        if (a < idleThreshold) return VoiceState.Idle;
         if (a <= quietMax) return VoiceState.Quiet;
         if (a >= loudMin) return VoiceState.Loud;
         return VoiceState.Medium;
@@ -117,13 +133,9 @@ public class VoiceActionController : MonoBehaviour
     // Hysteresis mapping — used for smoother UI/CurrentState display.
     private VoiceState GetStateWithHysteresis(float a, VoiceState current)
     {
-        // Treat under quietMin as Neutral always
-        if (a < quietMin) return VoiceState.Neutral;
-
         switch (current)
         {
-            case VoiceState.Neutral:
-                // Enter quiet/medium/loud based on amplitude
+            case VoiceState.Idle:
                 return GetStateFromAmplitude(a);
 
             case VoiceState.Quiet:
@@ -147,7 +159,22 @@ public class VoiceActionController : MonoBehaviour
 
     private void ApplyStableState(float amplitude)
     {
+        if (amplitude < idleThreshold)
+        {
+            pendingState = CurrentState;
+            pendingStateTimer = 0f;
+            return;
+        }
+
         VoiceState targetState = GetStateWithHysteresis(amplitude, CurrentState);
+
+        if (CurrentState == VoiceState.Idle)
+        {
+            SetState(targetState);
+            pendingState = targetState;
+            pendingStateTimer = 0f;
+            return;
+        }
 
         if (targetState == CurrentState)
         {
@@ -183,6 +210,7 @@ public class VoiceActionController : MonoBehaviour
         {
             case VoiceState.Quiet:
                 crouchLatched = true;
+                crouchTimer = crouchDuration;
                 player.SetCrouch(true);
                 break;
 
@@ -202,7 +230,7 @@ public class VoiceActionController : MonoBehaviour
                 }
                 break;
 
-            case VoiceState.Neutral:
+            case VoiceState.Idle:
             default:
                 // already stood up
                 break;
@@ -212,6 +240,7 @@ public class VoiceActionController : MonoBehaviour
     private void ForceStand()
     {
         crouchLatched = false;
+        crouchTimer = 0f;
         player.StandUp();
     }
 
@@ -231,7 +260,7 @@ public class VoiceActionController : MonoBehaviour
             return;
         }
 
-        Debug.Log($"[VAC] {sourceLabel} | confirmed={confirmed} amp={mic.SmoothedAmplitude:F4} (quietMin={quietMin:F3} quietMax={quietMax:F3} loudMin={loudMin:F3})");
+        Debug.Log($"[VAC] {sourceLabel} | confirmed={confirmed} amp={mic.SmoothedAmplitude:F4} (idleThreshold={idleThreshold:F3} quietMax={quietMax:F3} loudMin={loudMin:F3})");
 
         ConfirmState(confirmed);
     }

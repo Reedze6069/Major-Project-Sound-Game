@@ -76,7 +76,7 @@ public class SoundVisionSystem : MonoBehaviour
                 break;
 
             default:
-                // Neutral: do nothing
+                // Idle: do nothing
                 break;
         }
     }
