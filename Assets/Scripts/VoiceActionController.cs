@@ -40,10 +40,6 @@ public class VoiceActionController : MonoBehaviour
     public float jumpCooldown = 0.25f;
     public float shootCooldown = 0.15f;
 
-    [Header("Quiet Action")]
-    [Tooltip("How long the player stays in the slide/crouch after confirming Quiet.")]
-    public float crouchDuration = 0.35f;
-
     [Header("Confirm Input")]
     public bool allowKeyboardConfirm = true;
     public KeyCode confirmKey = KeyCode.Space;
@@ -54,7 +50,6 @@ public class VoiceActionController : MonoBehaviour
     float shootTimer = 0f;
     float confirmTimer = 0f;
     float pendingStateTimer = 0f;
-    float crouchTimer = 0f;
 
     bool crouchLatched = false;
     bool isLoudAiming = false;
@@ -73,15 +68,6 @@ public class VoiceActionController : MonoBehaviour
         jumpTimer    -= Time.deltaTime;
         shootTimer   -= Time.deltaTime;
         confirmTimer -= Time.deltaTime;
-
-        if (crouchLatched)
-        {
-            crouchTimer -= Time.deltaTime;
-            if (crouchTimer <= 0f)
-            {
-                ForceStand();
-            }
-        }
 
         if (isLoudAiming && allowKeyboardConfirm && Input.GetKeyUp(confirmKey))
         {
@@ -108,6 +94,12 @@ public class VoiceActionController : MonoBehaviour
 
         // Update the displayed action state with hysteresis.
         ApplyStableState(a);
+
+        // Keep crouch behavior aligned with the meter color/state.
+        if (crouchLatched && (CurrentState == VoiceState.Medium || CurrentState == VoiceState.Loud))
+        {
+            ForceStand();
+        }
 
         if (isLoudAiming && laneCrosshair != null && CurrentState != VoiceState.Idle)
         {
@@ -210,7 +202,6 @@ public class VoiceActionController : MonoBehaviour
         {
             case VoiceState.Quiet:
                 crouchLatched = true;
-                crouchTimer = crouchDuration;
                 player.SetCrouch(true);
                 break;
 
@@ -240,7 +231,6 @@ public class VoiceActionController : MonoBehaviour
     private void ForceStand()
     {
         crouchLatched = false;
-        crouchTimer = 0f;
         player.StandUp();
     }
 

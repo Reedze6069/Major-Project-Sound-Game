@@ -30,7 +30,9 @@ public class PlayerController : MonoBehaviour
     public float homingLockRange = 18f;
 
     private Rigidbody2D rb;
-    private BoxCollider2D col;
+    private BoxCollider2D boxCol;
+    private CapsuleCollider2D capsuleCol;
+    private PlayerAttackVisuals attackVisuals;
 
     private Vector3 originalScale;
     private Vector2 standingColliderOffset;
@@ -40,12 +42,15 @@ public class PlayerController : MonoBehaviour
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
-        col = GetComponent<BoxCollider2D>();
+        capsuleCol = GetComponent<CapsuleCollider2D>();
+        boxCol = capsuleCol == null ? GetComponent<BoxCollider2D>() : null;
+        attackVisuals = GetComponent<PlayerAttackVisuals>();
         originalScale = transform.localScale;
 
-        if (col != null)
+        if (HasSupportedCollider())
         {
-            standingColliderOffset = col.offset;
+            standingColliderSize = GetColliderSize();
+            standingColliderOffset = GetColliderOffset();
             crouchingColliderOffset = CalculateBottomAnchoredOffset(crouchingColliderSize);
         }
 
@@ -73,7 +78,6 @@ public class PlayerController : MonoBehaviour
 
     public void SetCrouch(bool crouch)
     {
-        if (col == null) return;
         if (isCrouching == crouch) return;
 
         isCrouching = crouch;
@@ -102,6 +106,7 @@ public class PlayerController : MonoBehaviour
         GameObject bullet = Instantiate(bulletPrefab, firePoint.position, Quaternion.identity);
         Vector2 shootDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector2.right;
         Transform target = FindBestEnemyTarget(firePoint.position, shootDirection);
+        attackVisuals?.PlayShoot(shootDirection);
 
         Rigidbody2D bulletRb = bullet.GetComponent<Rigidbody2D>();
         if (bulletRb != null)
@@ -159,10 +164,12 @@ public class PlayerController : MonoBehaviour
 
     private void ApplyCrouchState(bool crouch)
     {
-        if (col == null) return;
+        if (HasSupportedCollider())
+        {
+            SetColliderSize(crouch ? crouchingColliderSize : standingColliderSize);
+            SetColliderOffset(crouch ? crouchingColliderOffset : standingColliderOffset);
+        }
 
-        col.size = crouch ? crouchingColliderSize : standingColliderSize;
-        col.offset = crouch ? crouchingColliderOffset : standingColliderOffset;
         transform.localScale = crouch ? crouchingScale : originalScale;
     }
 
@@ -171,6 +178,53 @@ public class PlayerController : MonoBehaviour
         float standingBottom = standingColliderOffset.y - (standingColliderSize.y * 0.5f);
         float targetOffsetY = standingBottom + (targetSize.y * 0.5f);
         return new Vector2(standingColliderOffset.x, targetOffsetY);
+    }
+
+    private bool HasSupportedCollider()
+    {
+        return capsuleCol != null || boxCol != null;
+    }
+
+    private Vector2 GetColliderOffset()
+    {
+        if (capsuleCol != null) return capsuleCol.offset;
+        if (boxCol != null) return boxCol.offset;
+        return Vector2.zero;
+    }
+
+    private Vector2 GetColliderSize()
+    {
+        if (capsuleCol != null) return capsuleCol.size;
+        if (boxCol != null) return boxCol.size;
+        return Vector2.zero;
+    }
+
+    private void SetColliderOffset(Vector2 offset)
+    {
+        if (capsuleCol != null)
+        {
+            capsuleCol.offset = offset;
+            return;
+        }
+
+        if (boxCol != null)
+        {
+            boxCol.offset = offset;
+        }
+    }
+
+    private void SetColliderSize(Vector2 size)
+    {
+        if (capsuleCol != null)
+        {
+            capsuleCol.size = size;
+            return;
+        }
+
+        if (boxCol != null)
+        {
+            boxCol.size = size;
+        }
     }
 
 #if UNITY_EDITOR
