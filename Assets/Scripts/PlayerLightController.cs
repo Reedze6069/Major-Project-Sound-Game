@@ -4,6 +4,7 @@ using UnityEngine.Rendering.Universal;
 public class PlayerLightController : MonoBehaviour
 {
     public MicrophoneInput mic;
+    public VoiceActionController voice;
     public Light2D light2D;
 
     [Header("Always-On Base")]
@@ -18,12 +19,19 @@ public class PlayerLightController : MonoBehaviour
 
     [Header("Smoothing")]
     public float smooth = 10f;
+    [Tooltip("How slowly the light shrinks after the Light state ends.")]
+    public float decaySmooth = 2.5f;
     [Tooltip("How long the light holds its expanded size before shrinking.")]
     public float decayDelay = 0.15f;
+
+    [Header("Light State Exit")]
+    [Tooltip("How long the light stays expanded after leaving the Light state.")]
+    public float exitHoldTime = 0.45f;
 
     float decayTimer;
     float currentTargetRadius;
     float currentTargetIntensity;
+    float exitHoldTimer;
 
     void Reset()
     {
@@ -32,8 +40,12 @@ public class PlayerLightController : MonoBehaviour
 
     void Start()
     {
+        if (voice == null)
+            voice = FindObjectOfType<VoiceActionController>();
+
         currentTargetRadius = baseOuterRadius;
         currentTargetIntensity = baseIntensity;
+        exitHoldTimer = 0f;
 
         if (light2D == null) return;
 
@@ -45,7 +57,8 @@ public class PlayerLightController : MonoBehaviour
     {
         if (mic == null || light2D == null) return;
 
-        float a = mic.SmoothedAmplitude;
+        bool inLightState = voice == null || voice.CurrentState == VoiceActionController.VoiceState.Medium;
+        float a = inLightState ? mic.SmoothedAmplitude : 0f;
 
         // 0..1 intensity mapping
         float t = Mathf.Clamp01(Mathf.InverseLerp(noiseFloor, loudRef, a));
@@ -53,30 +66,48 @@ public class PlayerLightController : MonoBehaviour
         float targetRadius = baseOuterRadius + (maxRadiusBoost * t);
         float targetIntensity = baseIntensity + (maxIntensityBoost * t);
 
-        bool expanding =
-            targetRadius >= currentTargetRadius ||
-            targetIntensity >= currentTargetIntensity;
+        if (inLightState)
+        {
+            exitHoldTimer = exitHoldTime;
 
-        if (expanding)
-        {
-            currentTargetRadius = targetRadius;
-            currentTargetIntensity = targetIntensity;
-            decayTimer = decayDelay;
+            bool expanding =
+                targetRadius >= currentTargetRadius ||
+                targetIntensity >= currentTargetIntensity;
+
+            if (expanding)
+            {
+                currentTargetRadius = targetRadius;
+                currentTargetIntensity = targetIntensity;
+                decayTimer = decayDelay;
+            }
+            else if (decayTimer > 0f)
+            {
+                decayTimer -= Time.deltaTime;
+            }
+            else
+            {
+                currentTargetRadius = targetRadius;
+                currentTargetIntensity = targetIntensity;
+            }
         }
-        else if (decayTimer > 0f)
+        else if (exitHoldTimer > 0f)
         {
-            decayTimer -= Time.deltaTime;
+            exitHoldTimer -= Time.deltaTime;
         }
         else
         {
-            currentTargetRadius = targetRadius;
-            currentTargetIntensity = targetIntensity;
+            decayTimer = 0f;
+            currentTargetRadius = baseOuterRadius;
+            currentTargetIntensity = baseIntensity;
         }
 
+        float radiusSmooth = currentTargetRadius >= light2D.pointLightOuterRadius ? smooth : decaySmooth;
+        float intensitySmooth = currentTargetIntensity >= light2D.intensity ? smooth : decaySmooth;
+
         light2D.pointLightOuterRadius =
-            Mathf.Lerp(light2D.pointLightOuterRadius, currentTargetRadius, Time.deltaTime * smooth);
+            Mathf.Lerp(light2D.pointLightOuterRadius, currentTargetRadius, Time.deltaTime * radiusSmooth);
 
         light2D.intensity =
-            Mathf.Lerp(light2D.intensity, currentTargetIntensity, Time.deltaTime * smooth);
+            Mathf.Lerp(light2D.intensity, currentTargetIntensity, Time.deltaTime * intensitySmooth);
     }
 }
